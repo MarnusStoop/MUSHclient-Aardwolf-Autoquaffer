@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Auto_Quaff"
+   author="Abelinc/Lunk"
+   id="91db3f0b6bb87464ca75f5c7"
+   language="Lua"
+   purpose="Quaffs potions if in battle and health/mana/moves falls below preset limit"
+   date_written="2010-02-26"
+   requires="4.98"
+   version="2.1"
+   save_state="y"
+   >
+<description trim="y">
+<![CDATA[
+Install this plugin to automatically quaff a potion when your health falls 
+below a preset limit.
+
+qff                     ---> Displays the current values of variables
+
+qff bag *               ---> Sets the container to get potions from to *
+
+qff hp pot *            ---> Sets hp potion to *
+
+qff mn pot *            ---> Sets mn potion to *
+
+qff mv pot *            ---> Sets mv potion to *
+
+qff hp per *            ---> Sets the HP percent you must fall below to quaff to *
+
+qff mn per *            ---> Sets the MN percent you must fall below to quaff to *
+
+qff mv per *            ---> Sets what MV percent you must fall below to quaff to *
+							   
+qff on/off              ---> Turns the actions of the plugin on or off
+
+]]>
+</description>
+
+</plugin>
+
+<!--  configure quaffing limits -->
+
+
+<aliases>
+
+  <alias
+   name="autoquaff"
+   script="qff_settings"
+   match="^qff ?(hp per|mn per|mv per|hp pot|mn pot|mv pot|bag|on|off|help|debug)?( [a-z0-9]+)?"
+   enabled="y"
+   regexp="y"
+   ignore_case="y"
+   sequence="100"
+  >
+  </alias>
+   
+</aliases>
+
+<script>
+<![CDATA[
+
+require "checkplugin"
+require "serialize"
+require "commas"
+require "gmcphelper"
+
+function OnPluginBroadcast (msg, id, name, text)
+   -- Look for GMCP handler.
+   if (id == '3e7dedbe37e44942dd46d264') then
+      if (text == "char.vitals") then
+         res, gmcparg = CallPlugin("3e7dedbe37e44942dd46d264","gmcpval","char")
+
+         luastmt = "gmcpdata = " .. gmcparg
+         assert (loadstring (luastmt or "")) ()
+		   do_autoquaff ()
+      end
+   end
+end
+
+function do_autoquaff ()
+	if (os.time () - autoquaff_lastfired) > 3 then -- if we've fired within 3 seconds, don't bother with other checks, do nothing
+		if qff_enable == "yes" then -- if not enabled, don't do anything
+			if (gmcpval("status.state")) == "8" then -- if fighting
+				if tonumber ((tonumber(gmcpval("vitals.hp"))/tonumber(gmcpval("maxstats.maxhp"))*100)) < tonumber (qff_hp_per) then -- if HP in trouble
+						Send ("g " .. qff_hp_pot .. " " .. qff_bag)
+						Send ("quaff " .. qff_hp_pot)
+						autoquaff_lastfired = os.time ()
+				else 
+					if qff_debug == "on" then 
+						ColourNote ("yellow", "", "We've got plenty of health. No need to fire. Health is at " .. tonumber(gmcpval("vitals.hp")))
+					end
+				end -- end HP check
+			end -- end if fighting
+		end -- end if enabled check
+	end -- end 3 second time check
+	
+	if (os.time () - autoquaff_lastfired) > 3 then -- if we've fired within 3 seconds, don't bother with other checks, do nothing
+		if qff_enable == "yes" then -- if not enabled, don't do anything
+			if (gmcpval("status.state")) == "8" then -- if fighting
+				if tonumber ((tonumber(gmcpval("vitals.mana"))/tonumber(gmcpval("maxstats.maxmana"))*100)) < tonumber (qff_mn_per) then -- if MN in trouble
+						Send ("g " .. qff_mn_pot .. " " .. qff_bag)
+						Send ("quaff " .. qff_mn_pot)
+						autoquaff_lastfired = os.time ()
+				else 
+					if qff_debug == "on" then 
+						ColourNote ("yellow", "", "We've got plenty of mana. No need to fire. Mana is at " .. tonumber(gmcpval("vitals.mana")))
+					end
+				end -- end MN check
+			end -- end if fighting
+		end -- end if enabled check
+	end -- end 3 second time check
+	
+	if (os.time () - autoquaff_lastfired) > 3 then -- if we've fired within 3 seconds, don't bother with other checks, do nothing
+		if qff_enable == "yes" then -- if not enabled, don't do anything
+			if (gmcpval("status.state")) == "8" then -- if fighting
+				if tonumber ((tonumber(gmcpval("vitals.moves"))/tonumber(gmcpval("maxstats.maxmoves"))*100)) < tonumber (qff_mv_per) then -- if MV in trouble
+						Send ("g " .. qff_mv_pot .. " " .. qff_bag)
+						Send ("quaff " .. qff_mv_pot)
+						autoquaff_lastfired = os.time ()
+				else 
+					if autoquaff_debug == "on" then 
+						ColourNote ("yellow", "", "We've got plenty of moves. No need to fire. Moves is at " .. tonumber(gmcpval("vitals.moves")))
+					end
+				end -- end MV check
+			end -- end if fighting
+		end -- end if enabled check
+	end -- end 3 second time check
+end -- do_autoquaff
+
+function qff_settings (name, line, wildcards)
+	if wildcards [1] == "" then
+		qff_tellme ()
+	elseif wildcards [1] == "on" then
+		qff_enable = "yes"
+		ColourNote ("yellow", "", "Autoquaff plugin enabled.")
+	elseif wildcards [1] == "off" then
+		qff_enable = "no"
+		ColourNote ("yellow", "", "Autoquaff plugin disabled.")
+	elseif wildcards [1] == "help" then
+		qff_help ()
+		else
+			if wildcards [2] == false then
+				ColourNote ("yellow", "", "You need to provide a value.")
+			end
+			if wildcards [1] == "debug" then
+				if ((wildcards [2] == " on") or (wildcards [2] == " off")) then
+					qff_debug = wildcards [2]
+					ColourNote ("yellow", "", "Turning debug" .. qff_debug)
+					else ColourNote ("yellow", "", "Correct values are 'on' or 'off'.")
+				end
+			elseif wildcards [1] == "hp pot" then
+				qff_hp_pot = wildcards [2]
+				ColourNote ("yellow", "", "Set autoquaff hp potion to : " .. qff_hp_pot)
+			elseif wildcards [1] == "mn pot" then
+				qff_mn_pot = wildcards [2]
+				ColourNote ("yellow", "", "Set autoquaff mn potion to : " .. qff_mn_pot)
+			elseif wildcards [1] == "mv pot" then
+				qff_mv_pot = wildcards [2]
+				ColourNote ("yellow", "", "Set autoquaff mv potion to : " .. qff_mv_pot)
+			elseif wildcards [1] == "bag" then
+				qff_bag = wildcards [2]
+				ColourNote ("yellow", "", "Set autoquaff bag to " .. qff_bag)
+			elseif tonumber (wildcards [2]) > 99 then
+				ColourNote ("yellow", "", "Try a smaller value.")
+			elseif wildcards [1] == "hp per" then
+				qff_hp_per = tonumber (wildcards [2])
+				ColourNote ("yellow", "", "Set autoquaff hp percent to : " .. qff_hp_per)
+			elseif wildcards [1] == "mn per" then
+				qff_mn_per = tonumber (wildcards [2])
+				ColourNote ("yellow", "", "Set autoquaff mn percent to : " .. qff_mn_per)
+			elseif wildcards [1] == "mv per" then
+				qff_mv_per = tonumber (wildcards [2])
+				ColourNote ("yellow", "", "Set autoquaff mv percent to : " .. qff_mv_per)
+			end
+	end
+end -- autoquaff_settings
+
+function qff_tellme (name, line, wildcards)
+	ColourNote ("yellow", "", "bag : " .. qff_bag)
+	ColourNote ("yellow", "", "hp percent : " .. qff_hp_per)
+	ColourNote ("yellow", "", "mn percent : " .. qff_mn_per)
+	ColourNote ("yellow", "", "mv percent : " .. qff_mv_per)
+	ColourNote ("yellow", "", "hp potion : " .. qff_hp_pot)
+	ColourNote ("yellow", "", "mn potion : " .. qff_mn_pot)
+	ColourNote ("yellow", "", "mv potion : " .. qff_mv_pot)
+end
+
+function qff_help (name, line, wildcards)
+  ColourNote ("teal", "", world.GetPluginInfo (world.GetPluginID (), 3))
+  return true -- done  
+end -- autoquaff_help
+
+function OnPluginInstall ()
+
+if GetVariable ("enabled") == "false" then
+    ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
+    check (EnablePlugin(GetPluginID (), false))
+    return
+end -- they didn't enable us last time
+  
+OnPluginEnable ()  -- do initialization stuff
+  
+end -- OnPluginInstall
+
+function OnPluginEnable ()
+	qff_hp_per = GetVariable ("qff_hp_per")
+	if qff_hp_per == nil then
+		SetVariable ("qff_hp_per", tonumber(30))
+	end
+	qff_hp_per = GetVariable ("qff_hp_per")
+
+	qff_mn_per = GetVariable ("qff_mn_per")
+	if qff_mn_per == nil then
+		SetVariable ("qff_mn_per", tonumber(30))
+	end
+	qff_mn_per = GetVariable ("qff_mn_per")
+	
+	qff_mv_per = GetVariable ("qff_mv_per")
+	if qff_mv_per == nil then
+		SetVariable ("qff_mv_per", tonumber(30))
+	end
+	qff_mv_per = GetVariable ("qff_mv_per")
+
+	qff_hp_pot = GetVariable ("qff_hp_pot")
+	if qff_hp_pot == nil then
+		SetVariable ("qff_hp_pot", "heal")
+	end
+	qff_hp_pot = GetVariable ("qff_hp_pot")
+	
+	qff_mn_pot = GetVariable ("qff_mn_pot")
+	if qff_mn_pot == nil then
+		SetVariable ("qff_mn_pot", "lotus")
+	end
+	qff_mn_pot = GetVariable ("qff_mn_pot")
+	
+	qff_mv_pot = GetVariable ("qff_mv_pot")
+	if qff_mv_pot == nil then
+		SetVariable ("qff_mv_pot", "refresh")
+	end
+	qff_mv_pot = GetVariable ("qff_mv_pot")
+	
+	qff_bag = GetVariable ("qff_bag")
+	if qff_bag == nil then
+		SetVariable ("qff_bag", "bag")
+	end
+	qff_bag = GetVariable ("qff_bag")
+	
+	if GetVariable ("qff_debug") == nil then 
+		SetVariable ("qff_debug", "off")
+	end
+	qff_debug = GetVariable ("qff_debug")
+	if GetVariable ("qff_enable") == nil then 
+		SetVariable ("qff_enable", "yes")
+	end
+	qff_enable = GetVariable ("qff_enable")
+	autoquaff_lastfired = os.time ()
+	Send_GMCP_Packet("request char")
+end -- OnPluginEnable
+
+function OnPluginSaveState ()
+  SetVariable ("enabled", tostring (GetPluginInfo (GetPluginID (), 17)))
+  SetVariable ("qff_hp_per", qff_hp_per)
+  SetVariable ("qff_mn_per", qff_mn_per)
+  SetVariable ("qff_mv_per", qff_mv_per)
+  SetVariable ("qff_hp_pot", qff_hp_pot)
+  SetVariable ("qff_mn_pot", qff_mn_pot)
+  SetVariable ("qff_mv_pot", qff_mv_pot)
+  SetVariable ("qff_bag", qff_bag)
+  SetVariable ("qff_debug", qff_debug)
+  SetVariable ("qff_enable", qff_enable)
+end -- OnPluginSaveState
+
+]]>
+</script>
+
+</muclient>
